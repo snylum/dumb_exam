@@ -1,0 +1,547 @@
+import React, { useState, useRef } from 'react';
+import { Upload, FileText, Brain, CheckCircle, XCircle, RefreshCw, Download, Trash2, Plus } from 'lucide-react';
+
+const SmartQuestionnaireSystem = () => {
+  const [uploadedContent, setUploadedContent] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [questions, setQuestions] = useState([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [userAnswers, setUserAnswers] = useState({});
+  const [showResults, setShowResults] = useState(false);
+  const [mode, setMode] = useState('upload'); // upload, generate, take, results
+  const [questionConfig, setQuestionConfig] = useState({
+    count: 20,
+    difficulty: 'high',
+    types: {
+      scenario: true,
+      analysis: true,
+      evaluation: true,
+      synthesis: true,
+      application: true
+    }
+  });
+  const fileInputRef = useRef(null);
+
+  const parseMarkdown = (content) => {
+    const sections = [];
+    const lines = content.split('\n');
+    let currentSection = { title: '', content: '', level: 0 };
+    
+    lines.forEach(line => {
+      const headerMatch = line.match(/^(#{1,6})\s+(.+)$/);
+      if (headerMatch) {
+        if (currentSection.content) {
+          sections.push({...currentSection});
+        }
+        currentSection = {
+          title: headerMatch[2],
+          content: '',
+          level: headerMatch[1].length
+        };
+      } else if (line.trim() && !line.startsWith('![')) {
+        currentSection.content += line + '\n';
+      }
+    });
+    
+    if (currentSection.content) {
+      sections.push(currentSection);
+    }
+    
+    return sections.filter(s => s.content.trim().length > 50);
+  };
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    setFileName(file.name);
+    const text = await file.text();
+    setUploadedContent(text);
+    setMode('generate');
+  };
+
+  const generateQuestions = () => {
+    const sections = parseMarkdown(uploadedContent);
+    const selectedSections = sections
+      .sort(() => Math.random() - 0.5)
+      .slice(0, Math.min(questionConfig.count, sections.length));
+
+    const questionTypes = Object.keys(questionConfig.types).filter(
+      type => questionConfig.types[type]
+    );
+
+    const generatedQuestions = selectedSections.map((section, idx) => {
+      const type = questionTypes[idx % questionTypes.length];
+      return generateQuestionByType(section, type, idx + 1);
+    });
+
+    setQuestions(generatedQuestions);
+    setMode('take');
+    setCurrentQuestionIndex(0);
+    setUserAnswers({});
+    setShowResults(false);
+  };
+
+  const generateQuestionByType = (section, type, number) => {
+    const content = section.content.trim();
+    const concepts = extractKeyConcepts(content);
+    
+    const templates = {
+      scenario: {
+        stem: `Based on the concept of "${section.title}", consider this scenario:\n\nA teacher implements ${concepts[0]} in their classroom. ${generateScenarioContext(content)}`,
+        question: 'Which theoretical framework best explains this approach and why?',
+        options: generateOptions(section, 'theory'),
+        correctIndex: 0,
+        explanation: `This scenario reflects ${section.title} because it demonstrates key principles discussed in the content.`
+      },
+      analysis: {
+        stem: `Analyze the following concept from "${section.title}":\n\n${content.substring(0, 200)}...`,
+        question: 'What are the underlying assumptions and implications of this approach?',
+        options: generateOptions(section, 'analysis'),
+        correctIndex: 0,
+        explanation: `The key assumptions relate to how ${concepts[0]} influences educational practice.`
+      },
+      evaluation: {
+        stem: `Evaluate the strengths and limitations of "${section.title}" in modern educational contexts.`,
+        question: 'Which critical assessment is most accurate?',
+        options: generateOptions(section, 'evaluation'),
+        correctIndex: 0,
+        explanation: `A balanced evaluation considers both the historical context and contemporary applications.`
+      },
+      synthesis: {
+        stem: `How would you integrate concepts from "${section.title}" with contemporary educational technology?`,
+        question: 'Which innovative approach best synthesizes traditional and modern methods?',
+        options: generateOptions(section, 'synthesis'),
+        correctIndex: 0,
+        explanation: `Effective synthesis requires understanding core principles while adapting to new contexts.`
+      },
+      application: {
+        stem: `A school district wants to implement principles from "${section.title}". `,
+        question: 'What would be the most effective application strategy?',
+        options: generateOptions(section, 'application'),
+        correctIndex: 0,
+        explanation: `Successful application requires contextual adaptation and stakeholder engagement.`
+      }
+    };
+
+    return {
+      number,
+      type,
+      ...templates[type]
+    };
+  };
+
+  const extractKeyConcepts = (content) => {
+    const words = content.toLowerCase().split(/\W+/);
+    const commonWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for']);
+    const concepts = words
+      .filter(w => w.length > 5 && !commonWords.has(w))
+      .slice(0, 5);
+    return concepts.length > 0 ? concepts : ['key concept', 'learning', 'education'];
+  };
+
+  const generateScenarioContext = (content) => {
+    const sentences = content.split(/[.!?]+/).filter(s => s.trim().length > 20);
+    return sentences.length > 0 
+      ? sentences[0].trim() + '.' 
+      : 'Students engage actively with the material.';
+  };
+
+  const generateOptions = (section, optionType) => {
+    const baseOptions = {
+      theory: [
+        `This demonstrates ${section.title} through systematic application of its core principles`,
+        'This is primarily a behaviorist approach focused on observable outcomes',
+        'This reflects a traditional transmission model of education',
+        'This is an example of unstructured, informal learning'
+      ],
+      analysis: [
+        `The approach assumes learners actively construct knowledge through ${section.title.toLowerCase()}`,
+        'The approach assumes passive reception of information',
+        'The approach ignores individual differences in learning',
+        'The approach focuses solely on assessment outcomes'
+      ],
+      evaluation: [
+        `Strength: Aligns with research on ${section.title}; Limitation: Requires significant resources`,
+        'Strength: Easy to implement; Limitation: Limited educational value',
+        'Strength: Traditional approach; Limitation: Outdated methodology',
+        'Strength: Low cost; Limitation: Ineffective for deep learning'
+      ],
+      synthesis: [
+        `Combine core principles of ${section.title} with adaptive learning technologies`,
+        'Replace traditional methods entirely with digital solutions',
+        'Maintain separation between theory and technology',
+        'Focus exclusively on standardized testing platforms'
+      ],
+      application: [
+        `Develop comprehensive professional development aligned with ${section.title} principles`,
+        'Purchase new textbooks and materials',
+        'Increase class sizes to improve efficiency',
+        'Focus on standardized test preparation'
+      ]
+    };
+
+    return baseOptions[optionType] || baseOptions.theory;
+  };
+
+  const handleAnswer = (questionIndex, optionIndex) => {
+    setUserAnswers({
+      ...userAnswers,
+      [questionIndex]: optionIndex
+    });
+  };
+
+  const submitQuestionnaire = () => {
+    setShowResults(true);
+    setMode('results');
+  };
+
+  const calculateScore = () => {
+    let correct = 0;
+    questions.forEach((q, idx) => {
+      if (userAnswers[idx] === q.correctIndex) {
+        correct++;
+      }
+    });
+    return correct;
+  };
+
+  const resetQuestionnaire = () => {
+    setQuestions([]);
+    setUserAnswers({});
+    setShowResults(false);
+    setCurrentQuestionIndex(0);
+    setMode('upload');
+    setUploadedContent('');
+    setFileName('');
+  };
+
+  const exportResults = () => {
+    const score = calculateScore();
+    const results = {
+      fileName,
+      totalQuestions: questions.length,
+      score,
+      percentage: ((score / questions.length) * 100).toFixed(1),
+      answers: questions.map((q, idx) => ({
+        question: q.number,
+        type: q.type,
+        userAnswer: q.options[userAnswers[idx]] || 'Not answered',
+        correctAnswer: q.options[q.correctIndex],
+        isCorrect: userAnswers[idx] === q.correctIndex
+      }))
+    };
+
+    const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `questionnaire-results-${Date.now()}.json`;
+    a.click();
+  };
+
+  // UPLOAD MODE
+  if (mode === 'upload') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-12">
+            <h1 className="text-4xl font-bold text-gray-800 mb-4 flex items-center justify-center gap-3">
+              <Brain className="w-10 h-10 text-indigo-600" />
+              Smart Questionnaire Generator
+            </h1>
+            <p className="text-lg text-gray-600">Upload any markdown file to generate high-level HOTS questions</p>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div 
+              className="border-4 border-dashed border-indigo-300 rounded-xl p-12 text-center hover:border-indigo-500 transition-all cursor-pointer bg-indigo-50"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="w-16 h-16 text-indigo-500 mx-auto mb-4" />
+              <h2 className="text-2xl font-semibold text-gray-800 mb-2">Upload Markdown File</h2>
+              <p className="text-gray-600 mb-4">Click to browse or drag and drop your .md file here</p>
+              <p className="text-sm text-gray-500">Supports educational content, lecture notes, study materials, etc.</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".md,.markdown,.txt"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+            </div>
+
+            <div className="mt-8 grid grid-cols-3 gap-4 text-center">
+              <div className="p-4 bg-blue-50 rounded-lg">
+                <FileText className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+                <p className="text-sm font-medium text-gray-700">Any Format</p>
+              </div>
+              <div className="p-4 bg-purple-50 rounded-lg">
+                <Brain className="w-8 h-8 text-purple-600 mx-auto mb-2" />
+                <p className="text-sm font-medium text-gray-700">AI-Powered</p>
+              </div>
+              <div className="p-4 bg-green-50 rounded-lg">
+                <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                <p className="text-sm font-medium text-gray-700">HOTS Questions</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // GENERATE MODE
+  if (mode === 'generate') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-800">Configure Questionnaire</h2>
+              <button
+                onClick={resetQuestionnaire}
+                className="text-gray-600 hover:text-gray-800"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+              <p className="text-sm font-medium text-gray-700">Uploaded File:</p>
+              <p className="text-lg font-semibold text-indigo-600">{fileName}</p>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Number of Questions: {questionConfig.count}
+                </label>
+                <input
+                  type="range"
+                  min="5"
+                  max="30"
+                  value={questionConfig.count}
+                  onChange={(e) => setQuestionConfig({...questionConfig, count: parseInt(e.target.value)})}
+                  className="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Difficulty Level
+                </label>
+                <select
+                  value={questionConfig.difficulty}
+                  onChange={(e) => setQuestionConfig({...questionConfig, difficulty: e.target.value})}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="medium">Medium (Analysis & Application)</option>
+                  <option value="high">High (Evaluation & Synthesis)</option>
+                  <option value="mixed">Mixed (All Levels)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Question Types (Select at least one)
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {Object.keys(questionConfig.types).map(type => (
+                    <label key={type} className="flex items-center gap-2 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={questionConfig.types[type]}
+                        onChange={(e) => setQuestionConfig({
+                          ...questionConfig,
+                          types: {...questionConfig.types, [type]: e.target.checked}
+                        })}
+                        className="w-4 h-4 text-indigo-600 rounded"
+                      />
+                      <span className="capitalize text-sm font-medium text-gray-700">{type}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={generateQuestions}
+                disabled={!Object.values(questionConfig.types).some(v => v)}
+                className="w-full bg-indigo-600 text-white py-4 rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+              >
+                <Brain className="w-5 h-5" />
+                Generate Questions
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // TAKE QUESTIONNAIRE MODE
+  if (mode === 'take' && !showResults) {
+    const currentQuestion = questions[currentQuestionIndex];
+    const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className="mb-6">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm font-medium text-gray-600">
+                  Question {currentQuestionIndex + 1} of {questions.length}
+                </span>
+                <span className="text-sm font-medium text-indigo-600">
+                  {Object.keys(userAnswers).length} answered
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-indigo-600 h-2 rounded-full transition-all"
+                  style={{width: `${progress}%`}}
+                />
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <span className="inline-block px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-semibold mb-4">
+                {currentQuestion.type.toUpperCase()}
+              </span>
+              <h3 className="text-xl font-bold text-gray-800 mb-4">{currentQuestion.stem}</h3>
+              <p className="text-lg text-gray-700 font-medium">{currentQuestion.question}</p>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              {currentQuestion.options.map((option, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleAnswer(currentQuestionIndex, idx)}
+                  className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
+                    userAnswers[currentQuestionIndex] === idx
+                      ? 'border-indigo-600 bg-indigo-50'
+                      : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="font-medium text-gray-700">{String.fromCharCode(65 + idx)}.</span> {option}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setCurrentQuestionIndex(Math.max(0, currentQuestionIndex - 1))}
+                disabled={currentQuestionIndex === 0}
+                className="flex-1 py-3 border-2 border-gray-300 rounded-lg font-semibold hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              {currentQuestionIndex === questions.length - 1 ? (
+                <button
+                  onClick={submitQuestionnaire}
+                  className="flex-1 bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 flex items-center justify-center gap-2"
+                >
+                  <CheckCircle className="w-5 h-5" />
+                  Submit
+                </button>
+              ) : (
+                <button
+                  onClick={() => setCurrentQuestionIndex(Math.min(questions.length - 1, currentQuestionIndex + 1))}
+                  className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700"
+                >
+                  Next
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // RESULTS MODE
+  if (mode === 'results') {
+    const score = calculateScore();
+    const percentage = ((score / questions.length) * 100).toFixed(1);
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold text-gray-800 mb-4">Questionnaire Complete!</h2>
+              <div className="inline-block p-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl text-white mb-4">
+                <p className="text-6xl font-bold">{percentage}%</p>
+                <p className="text-xl">{score} out of {questions.length} correct</p>
+              </div>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              {questions.map((q, idx) => {
+                const isCorrect = userAnswers[idx] === q.correctIndex;
+                const userAnswer = userAnswers[idx];
+
+                return (
+                  <div key={idx} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3 mb-3">
+                      {isCorrect ? (
+                        <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-1" />
+                      ) : (
+                        <XCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
+                      )}
+                      <div className="flex-1">
+                        <p className="font-semibold text-gray-800 mb-2">Question {q.number}</p>
+                        <p className="text-sm text-gray-600 mb-2">{q.question}</p>
+                        {userAnswer !== undefined && (
+                          <div className="space-y-1">
+                            <p className="text-sm">
+                              <span className="font-medium">Your answer:</span>
+                              <span className={isCorrect ? 'text-green-600' : 'text-red-600'}>
+                                {' '}{q.options[userAnswer]}
+                              </span>
+                            </p>
+                            {!isCorrect && (
+                              <p className="text-sm">
+                                <span className="font-medium">Correct answer:</span>
+                                <span className="text-green-600">
+                                  {' '}{q.options[q.correctIndex]}
+                                </span>
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        <p className="text-sm text-gray-500 mt-2 italic">{q.explanation}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={exportResults}
+                className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 flex items-center justify-center gap-2"
+              >
+                <Download className="w-5 h-5" />
+                Export Results
+              </button>
+              <button
+                onClick={resetQuestionnaire}
+                className="flex-1 bg-gray-600 text-white py-3 rounded-lg font-semibold hover:bg-gray-700 flex items-center justify-center gap-2"
+              >
+                <RefreshCw className="w-5 h-5" />
+                New Questionnaire
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
+
+export default SmartQuestionnaireSystem;
