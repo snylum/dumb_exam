@@ -395,43 +395,44 @@
                 setMode('generate');
             };
 
-            const generateQuestionsClientSide = async () => {
+            const generateQuestionsClientSide = () => {
                 setLoading(true);
                 setError('');
-                setLoadingStatus('Analyzing content and generating questions...');
+                setLoadingStatus('Generating questions...');
 
-                try {
-                    const questionTypes = Object.keys(questionConfig.types).filter(
-                        type => questionConfig.types[type]
-                    );
+                // Use setTimeout to allow UI to update before processing
+                setTimeout(() => {
+                    try {
+                        const questionTypes = Object.keys(questionConfig.types).filter(
+                            type => questionConfig.types[type]
+                        );
 
-                    // Simple client-side question generation
-                    const generatedQuestions = await generateQuestionsFromContent(
-                        uploadedContent,
-                        questionConfig.count,
-                        questionConfig.difficulty,
-                        questionTypes
-                    );
+                        // Simple client-side question generation
+                        const generatedQuestions = generateQuestionsFromContent(
+                            uploadedContent,
+                            questionConfig.count,
+                            questionConfig.difficulty,
+                            questionTypes
+                        );
 
-                    if (generatedQuestions.length === 0) {
-                        throw new Error('Could not generate questions from the content. Please try a different file.');
+                        if (generatedQuestions.length === 0) {
+                            throw new Error('Could not generate questions from the content. Please try a different file.');
+                        }
+
+                        setQuestions(generatedQuestions);
+                        setMode('preview');
+                        setLoadingStatus('');
+                        setLoading(false);
+                    } catch (err) {
+                        setError(err.message || 'Failed to generate questions. Please try again.');
+                        setLoadingStatus('');
+                        setLoading(false);
                     }
-
-                    setQuestions(generatedQuestions);
-                    setMode('preview');
-                    setLoadingStatus('');
-                    setLoading(false);
-                } catch (err) {
-                    setError(err.message || 'Failed to generate questions. Please try again.');
-                    setLoadingStatus('');
-                    setLoading(false);
-                }
+                }, 100);
             };
 
             // Client-side question generation logic
-            const generateQuestionsFromContent = async (content, count, difficulty, types) => {
-                setLoadingStatus('Parsing content...');
-                
+            const generateQuestionsFromContent = (content, count, difficulty, types) => {
                 // Extract key concepts and sentences from content
                 const sentences = content.split(/[.!?]+/).filter(s => s.trim().length > 20);
                 const paragraphs = content.split(/\n\n+/).filter(p => p.trim().length > 50);
@@ -439,16 +440,12 @@
                 if (sentences.length < 5) {
                     throw new Error('Content is too short. Please upload a longer document.');
                 }
-
-                setLoadingStatus('Identifying key concepts...');
                 
                 const questions = [];
                 const questionTemplates = getQuestionTemplates(difficulty);
                 const usedContent = new Set();
 
                 for (let i = 0; i < Math.min(count, sentences.length * 2); i++) {
-                    setLoadingStatus(`Generating question ${i + 1} of ${count}...`);
-                    
                     const type = types[i % types.length];
                     const template = questionTemplates[type][Math.floor(Math.random() * questionTemplates[type].length)];
                     
@@ -826,4 +823,219 @@
                         React.createElement('div', { className: 'config-field', style: { marginBottom: '20px' } },
                             React.createElement('label', null, 'Test Directions:'),
                             React.createElement('textarea', {
-                                value: questionConfig
+                                value: questionConfig.directions,
+                                onChange: (e) => setQuestionConfig({...questionConfig, directions: e.target.value})
+                            })
+                        ),
+                        React.createElement('div', { className: 'config-field' },
+                            React.createElement('label', null, 'Question Types (Select at least one):'),
+                            React.createElement('div', { className: 'checkboxes' },
+                                Object.keys(questionConfig.types).map(type =>
+                                    React.createElement('label', { key: type, className: 'checkbox-item' },
+                                        React.createElement('input', {
+                                            type: 'checkbox',
+                                            checked: questionConfig.types[type],
+                                            onChange: (e) => setQuestionConfig({
+                                                ...questionConfig,
+                                                types: {...questionConfig.types, [type]: e.target.checked}
+                                            })
+                                        }),
+                                        React.createElement('span', null, type.charAt(0).toUpperCase() + type.slice(1))
+                                    )
+                                )
+                            )
+                        ),
+                        loading && React.createElement('div', { className: 'loading-status' },
+                            React.createElement('h4', null, '⚙️ Processing...'),
+                            React.createElement('p', null, loadingStatus),
+                            React.createElement('p', { style: { fontStyle: 'italic', marginTop: '10px' } }, 
+                                'This may take a moment depending on content length.'
+                            )
+                        ),
+                        React.createElement('div', { className: 'button-group' },
+                            React.createElement('button', {
+                                className: 'btn btn-primary',
+                                onClick: generateQuestionsClientSide,
+                                disabled: !Object.values(questionConfig.types).some(v => v) || loading
+                            }, loading ? 'Generating...' : '🚀 Generate Questions'),
+                            React.createElement('button', {
+                                className: 'btn btn-secondary',
+                                onClick: resetQuestionnaire,
+                                disabled: loading
+                            }, 'Cancel')
+                        )
+                    )
+                );
+            }
+
+            // PREVIEW MODE
+            if (mode === 'preview') {
+                return React.createElement('div', { style: { backgroundColor: '#f5f5f5', minHeight: '100vh', padding: '20px' } },
+                    React.createElement('div', { className: 'container' },
+                        React.createElement('div', { className: 'header' },
+                            React.createElement('h1', null, 'Questions Generated Successfully!')
+                        ),
+                        React.createElement('div', { style: { marginBottom: '20px', padding: '15px', backgroundColor: '#e8f5e9', border: '1px solid #4caf50', borderRadius: '3px' } },
+                            React.createElement('p', { style: { fontSize: '13px', fontWeight: 'bold', color: '#2e7d32' } },
+                                `✓ Generated ${questions.length} questions`
+                            )
+                        ),
+                        React.createElement('div', { style: { marginBottom: '20px', padding: '15px', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '3px' } },
+                            React.createElement('h3', { style: { fontSize: '14px', marginBottom: '10px', fontWeight: 'bold' } }, 'Next Steps:'),
+                            React.createElement('p', { style: { fontSize: '13px', marginBottom: '5px' } }, '1. Download the questionnaire as PDF to print and distribute'),
+                            React.createElement('p', { style: { fontSize: '13px', marginBottom: '10px' } }, '2. Or take the test online directly in your browser'),
+                            React.createElement('p', { style: { fontSize: '12px', color: '#666' } },
+                                'Preview: The PDF will include the test title, student info fields, directions, and all questions with answer choices formatted for printing.'
+                            )
+                        ),
+                        React.createElement('div', { className: 'button-group' },
+                            React.createElement('button', {
+                                className: 'btn btn-warning',
+                                onClick: downloadPDF
+                            }, '📄 Download as PDF'),
+                            React.createElement('button', {
+                                className: 'btn btn-primary',
+                                onClick: startOnlineTest
+                            }, '💻 Take Test Online'),
+                            React.createElement('button', {
+                                className: 'btn btn-secondary',
+                                onClick: resetQuestionnaire
+                            }, 'Start Over')
+                        )
+                    )
+                );
+            }
+
+            // TAKE QUESTIONNAIRE MODE
+            if (mode === 'take' && !showResults) {
+                const currentQuestion = questions[currentQuestionIndex];
+                const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
+                const answered = Object.keys(userAnswers).length;
+
+                return React.createElement('div', { style: { backgroundColor: '#f5f5f5', minHeight: '100vh', padding: '20px' } },
+                    React.createElement('div', { className: 'container' },
+                        React.createElement('div', { className: 'header' },
+                            React.createElement('h1', null, questionConfig.testTitle)
+                        ),
+                        React.createElement('div', { style: { marginBottom: '20px' } },
+                            React.createElement('div', { style: { fontSize: '13px', marginBottom: '10px' } },
+                                React.createElement('strong', null, `Question ${currentQuestionIndex + 1} of ${questions.length}`),
+                                React.createElement('span', { style: { marginLeft: '20px' } }, `(${answered} answered)`)
+                            ),
+                            React.createElement('div', { className: 'progress-bar' },
+                                React.createElement('div', { className: 'progress-fill', style: { width: `${progress}%` } },
+                                    Math.round(progress) + '%'
+                                )
+                            )
+                        ),
+                        React.createElement('div', { className: 'question-block' },
+                            React.createElement('span', { className: 'question-type-badge' }, currentQuestion.type.toUpperCase()),
+                            React.createElement('div', { className: 'question-number' }, `Question ${currentQuestion.number}`),
+                            React.createElement('div', { className: 'question-text' }, currentQuestion.stem),
+                            React.createElement('div', { className: 'question-text', style: { fontWeight: 'bold' } }, currentQuestion.question),
+                            React.createElement('div', { className: 'options' },
+                                currentQuestion.options.map((option, idx) =>
+                                    React.createElement('label', {
+                                        key: idx,
+                                        className: `option ${userAnswers[currentQuestionIndex] === idx ? 'selected' : ''}`,
+                                        onClick: () => handleAnswer(currentQuestionIndex, idx)
+                                    },
+                                        React.createElement('input', {
+                                            type: 'radio',
+                                            name: 'answer',
+                                            checked: userAnswers[currentQuestionIndex] === idx,
+                                            onChange: () => handleAnswer(currentQuestionIndex, idx)
+                                        }),
+                                        React.createElement('span', null, String.fromCharCode(65 + idx) + '. ' + option)
+                                    )
+                                )
+                            )
+                        ),
+                        React.createElement('div', { className: 'button-group' },
+                            React.createElement('button', {
+                                className: 'btn btn-secondary',
+                                onClick: () => setCurrentQuestionIndex(Math.max(0, currentQuestionIndex - 1)),
+                                disabled: currentQuestionIndex === 0
+                            }, 'Previous'),
+                            currentQuestionIndex === questions.length - 1 ?
+                                React.createElement('button', {
+                                    className: 'btn btn-success',
+                                    onClick: submitQuestionnaire
+                                }, 'Submit')
+                            :
+                                React.createElement('button', {
+                                    className: 'btn btn-primary',
+                                    onClick: () => setCurrentQuestionIndex(Math.min(questions.length - 1, currentQuestionIndex + 1))
+                                }, 'Next')
+                        )
+                    )
+                );
+            }
+
+            // RESULTS MODE
+            if (mode === 'results') {
+                const score = calculateScore();
+                const percentage = ((score / questions.length) * 100).toFixed(1);
+
+                return React.createElement('div', { style: { backgroundColor: '#f5f5f5', minHeight: '100vh', padding: '20px' } },
+                    React.createElement('div', { className: 'container' },
+                        React.createElement('div', { className: 'header' },
+                            React.createElement('h1', null, 'Questionnaire Results')
+                        ),
+                        React.createElement('div', { className: 'score-box' },
+                            React.createElement('div', null, React.createElement('strong', null, 'Score:')),
+                            React.createElement('div', { className: 'score-number' }, percentage + '%'),
+                            React.createElement('div', null, `${score} out of ${questions.length} correct`)
+                        ),
+                        React.createElement('div', { style: { marginTop: '30px' } },
+                            React.createElement('h3', { style: { marginBottom: '15px', fontWeight: 'bold' } }, 'Answer Review:'),
+                            questions.map((q, idx) => {
+                                const isCorrect = userAnswers[idx] === q.correctIndex;
+                                const userAnswer = userAnswers[idx];
+
+                                return React.createElement('div', {
+                                    key: idx,
+                                    className: `answer-review ${isCorrect ? '' : 'incorrect'}`
+                                },
+                                    React.createElement('div', { className: `answer-status ${isCorrect ? 'correct' : 'incorrect'}` },
+                                        isCorrect ? '✓ CORRECT' : '✗ INCORRECT'
+                                    ),
+                                    React.createElement('div', { className: 'answer-detail' },
+                                        React.createElement('strong', null, `Question ${q.number}: `),
+                                        q.question
+                                    ),
+                                    React.createElement('div', { className: 'answer-detail' },
+                                        React.createElement('strong', null, 'Your Answer: '),
+                                        userAnswer !== undefined ? q.options[userAnswer] : 'Not answered'
+                                    ),
+                                    !isCorrect && React.createElement('div', { className: 'answer-detail' },
+                                        React.createElement('strong', null, 'Correct Answer: '),
+                                        q.options[q.correctIndex]
+                                    ),
+                                    React.createElement('div', { className: 'answer-detail', style: { marginTop: '8px', fontStyle: 'italic', color: '#555' } },
+                                        q.explanation
+                                    )
+                                );
+                            })
+                        ),
+                        React.createElement('div', { className: 'button-group' },
+                            React.createElement('button', {
+                                className: 'btn btn-primary',
+                                onClick: exportResults
+                            }, 'Export Results (JSON)'),
+                            React.createElement('button', {
+                                className: 'btn btn-secondary',
+                                onClick: resetQuestionnaire
+                            }, 'Start New Questionnaire')
+                        )
+                    )
+                );
+            }
+
+            return null;
+        }
+
+        ReactDOM.render(React.createElement(SmartQuestionnaireSystem), document.getElementById('root'));
+    </script>
+</body>
+</html>
